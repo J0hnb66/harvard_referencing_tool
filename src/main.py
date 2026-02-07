@@ -3,10 +3,13 @@ from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 import os
 
+# macOS native clipboard (required for formatted paste into Word)
+from AppKit import NSPasteboard, NSPasteboardTypeRTF
+from Foundation import NSData
+
 from formatter.book_formatter import BookFormatter
 from formatter.journal_formatter import JournalFormatter
 from formatter.website_formatter import WebsiteFormatter
-from validators.input_validator import InputValidator
 
 
 class HarvardGUI:
@@ -15,15 +18,19 @@ class HarvardGUI:
         self.style = style
         self.root.title("Harvard Referencing Tool")
 
-        # Background and layout
         self.root.configure(bg="#F5F5F5")
+        self.root.update_idletasks()
+        self.root.minsize(900, 650)
+
         self.root.columnconfigure(0, weight=1)
         self.root.columnconfigure(1, weight=1)
+        self.root.rowconfigure(4, weight=1)
+        self.root.rowconfigure(7, weight=1)
 
         self.source_types = {
-            "Book": ["author", "year", "title", "publisher"],
-            "Journal": ["author", "year", "title", "journal", "volume", "issue", "pages"],
-            "Website": ["author", "year", "title", "url"]
+            "Book": ["authors", "year", "title", "edition", "place", "publisher"],
+            "Journal": ["authors", "year", "title", "journal", "volume", "issue", "pages"],
+            "Website": ["authors", "organisation", "year", "title", "website_name", "url", "accessed"]
         }
 
         self.formatters = {
@@ -42,34 +49,20 @@ class HarvardGUI:
 
     def build_ui(self):
 
-        # ------------------------------------------------
-        # SAFE LOGO LOADING (TOP RIGHT)
-        # ------------------------------------------------
         logo_path = os.path.join(os.path.dirname(__file__), "icons", "lrc_logo.png")
-
         if os.path.exists(logo_path):
             try:
                 logo_image = Image.open(logo_path)
                 logo_image = logo_image.resize((80, 80), Image.LANCZOS)
                 self.logo_photo = ImageTk.PhotoImage(logo_image)
-
                 logo_label = ttk.Label(self.root, image=self.logo_photo, background="#F5F5F5")
                 logo_label.grid(row=0, column=1, sticky="e", padx=10, pady=10)
-
             except Exception as e:
                 print("Logo failed to load:", e)
-        else:
-            print("Logo not found at:", logo_path)
 
-        # ------------------------------------------------
-        # HEADER (TOP LEFT)
-        # ------------------------------------------------
         header = ttk.Label(self.root, text="Harvard Referencing Tool ✨", style="Header.TLabel")
         header.grid(row=0, column=0, sticky="w", padx=10, pady=(10, 5))
 
-        # ------------------------------------------------
-        # SOURCE TYPE BUTTONS
-        # ------------------------------------------------
         ttk.Label(self.root, text="Select Source Type:", style="SubHeader.TLabel").grid(
             row=1, column=0, sticky="w", padx=10, pady=(5, 5)
         )
@@ -77,11 +70,7 @@ class HarvardGUI:
         button_frame = ttk.Frame(self.root, style="Card.TFrame")
         button_frame.grid(row=2, column=0, columnspan=2, pady=5, padx=10, sticky="w")
 
-        icon_map = {
-            "Book": "📘",
-            "Journal": "📰",
-            "Website": "🌐"
-        }
+        icon_map = {"Book": "📘", "Journal": "📰", "Website": "🌐"}
 
         for i, source in enumerate(self.source_types.keys()):
             btn = ttk.Button(
@@ -93,43 +82,36 @@ class HarvardGUI:
             btn.grid(row=0, column=i, padx=5, pady=5)
             self.source_buttons[source] = btn
 
-        # Separator
         ttk.Separator(self.root, orient="horizontal").grid(
             row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=10
         )
 
-        # ------------------------------------------------
-        # DYNAMIC FIELDS
-        # ------------------------------------------------
         self.fields_frame = ttk.Frame(self.root, style="Card.TFrame")
-        self.fields_frame.grid(row=4, column=0, columnspan=2, pady=5, padx=10, sticky="ew")
+        self.fields_frame.grid(row=4, column=0, columnspan=2, pady=5, padx=10, sticky="nsew")
+        self.fields_frame.columnconfigure(1, weight=1)
 
-        # ------------------------------------------------
-        # ACTION BUTTONS
-        # ------------------------------------------------
         button_bar = ttk.Frame(self.root, style="Card.TFrame")
         button_bar.grid(row=5, column=0, columnspan=2, pady=10, padx=10, sticky="w")
 
         ttk.Button(button_bar, text="✨ Generate", style="Rounded.TButton",
                    command=self.generate_reference).grid(row=0, column=0, padx=5, pady=5)
 
-        ttk.Button(button_bar, text="📋 Copy", style="Rounded.TButton",
-                   command=self.copy_to_clipboard).grid(row=0, column=1, padx=5, pady=5)
+        ttk.Button(button_bar, text="📋 Copy (Formatted)", style="Rounded.TButton",
+                   command=self.copy_formatted).grid(row=0, column=1, padx=5, pady=5)
 
         ttk.Button(button_bar, text="🧹 Clear", style="Rounded.TButton",
                    command=self.clear_fields).grid(row=0, column=2, padx=5, pady=5)
 
-        # ------------------------------------------------
-        # PREVIEW PANEL
-        # ------------------------------------------------
         ttk.Label(self.root, text="Reference Preview:", style="SubHeader.TLabel").grid(
             row=6, column=0, sticky="w", padx=10
         )
 
-        self.output_box = tk.Text(self.root, height=5, width=70, relief="solid", borderwidth=1)
+        self.output_box = tk.Text(self.root, height=6, width=70, relief="solid", borderwidth=1,
+                                  font=("Calibri", 11))
         self.output_box.grid(row=7, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
 
-        self.root.rowconfigure(7, weight=1)
+        italic_font = ("Calibri", 11, "italic")
+        self.output_box.tag_configure("italic", font=italic_font)
 
     def select_source(self, source: str):
         self.selected_source = source
@@ -138,10 +120,7 @@ class HarvardGUI:
 
     def highlight_selected_button(self):
         for name, btn in self.source_buttons.items():
-            if name == self.selected_source:
-                btn.configure(style="SelectedRounded.TButton")
-            else:
-                btn.configure(style="Rounded.TButton")
+            btn.configure(style="SelectedRounded.TButton" if name == self.selected_source else "Rounded.TButton")
 
     def update_fields(self):
         for widget in self.fields_frame.winfo_children():
@@ -169,13 +148,14 @@ class HarvardGUI:
             self.entries[field] = entry
             self.entry_vars[field] = var
 
-        self.fields_frame.columnconfigure(1, weight=1)
-
     def generate_reference(self):
         if not self.selected_source:
             return
 
         data = {field: var.get().strip() for field, var in self.entry_vars.items()}
+
+        if "authors" in data:
+            data["authors"] = [a.strip() for a in data["authors"].split(",") if a.strip()]
 
         if any(v == "" for v in data.values()):
             self.output_box.delete("1.0", tk.END)
@@ -185,14 +165,71 @@ class HarvardGUI:
         reference = formatter.format(data)
 
         self.output_box.delete("1.0", tk.END)
-        self.output_box.insert(tk.END, reference)
 
-    def copy_to_clipboard(self):
-        text = self.output_box.get("1.0", tk.END).strip()
-        if text:
-            self.root.clipboard_clear()
-            self.root.clipboard_append(text)
-            messagebox.showinfo("Copied", "Reference copied to clipboard.")
+        if self.selected_source == "Book":
+            title = data["title"]
+            before, after = reference.split(title, 1)
+            self.output_box.insert("end", before)
+            self.output_box.insert("end", title, "italic")
+            self.output_box.insert("end", after)
+
+        elif self.selected_source == "Journal":
+            journal = data["journal"]
+            before, after = reference.split(journal, 1)
+            self.output_box.insert("end", before)
+            self.output_box.insert("end", journal, "italic")
+            self.output_box.insert("end", after)
+
+        else:
+            self.output_box.insert("end", reference)
+
+    def copy_formatted(self):
+        text_widget = self.output_box
+
+        # RTF header with Calibri font
+        rtf = (
+            "{\\rtf1\\ansi\n"
+            "{\\fonttbl{\\f0 Calibri;}}\n"
+            "\\f0\\fs22 "
+        )
+
+        index = "1.0"
+        in_italic = False
+
+        while True:
+            char = text_widget.get(index)
+            if char == "":
+                break
+
+            tags = text_widget.tag_names(index)
+            is_italic = "italic" in tags
+
+            if is_italic and not in_italic:
+                rtf += "{\\i "
+                in_italic = True
+
+            if not is_italic and in_italic:
+                rtf += "}"
+                in_italic = False
+
+            if char in ["\\", "{", "}"]:
+                char = "\\" + char
+
+            rtf += char
+            index = text_widget.index(f"{index}+1c")
+
+        if in_italic:
+            rtf += "}"
+
+        rtf += "}"
+
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+
+        data = NSData.dataWithBytes_length_(rtf.encode("utf-8"), len(rtf.encode("utf-8")))
+        pb.setData_forType_(data, NSPasteboardTypeRTF)
+
+        messagebox.showinfo("Copied", "Formatted reference copied to clipboard.")
 
     def clear_fields(self):
         for var in self.entry_vars.values():
@@ -216,59 +253,22 @@ def main():
 
     root.configure(bg="#F5F5F5")
 
-    # Rounded button base style
-    style.configure(
-        "Rounded.TButton",
-        padding=10,
-        font=("Segoe UI", 10),
-        background="#1976D2",
-        foreground="white",
-        borderwidth=0,
-        relief="flat"
-    )
+    style.configure("Rounded.TButton", padding=10, font=("Calibri", 11),
+                    background="#1976D2", foreground="white", borderwidth=0, relief="flat")
+    style.map("Rounded.TButton", background=[("active", "#1565C0")])
 
-    style.map(
-        "Rounded.TButton",
-        background=[("active", "#1565C0")]
-    )
+    style.configure("SelectedRounded.TButton", padding=10, font=("Calibri", 11, "bold"),
+                    background="#4CAF50", foreground="white", borderwidth=0, relief="flat")
+    style.map("SelectedRounded.TButton", background=[("active", "#45A049")])
 
-    # Selected rounded button
-    style.configure(
-        "SelectedRounded.TButton",
-        padding=10,
-        font=("Segoe UI", 10, "bold"),
-        background="#4CAF50",
-        foreground="white",
-        borderwidth=0,
-        relief="flat"
-    )
+    style.configure("Header.TLabel", font=("Calibri", 16, "bold"),
+                    background="#F5F5F5", foreground="#333333")
 
-    style.map(
-        "SelectedRounded.TButton",
-        background=[("active", "#45A049")]
-    )
+    style.configure("SubHeader.TLabel", font=("Calibri", 13, "bold"),
+                    background="#F5F5F5", foreground="#333333")
 
-    # Labels
-    style.configure(
-        "Header.TLabel",
-        font=("Segoe UI", 14, "bold"),
-        background="#F5F5F5",
-        foreground="#333333"
-    )
-
-    style.configure(
-        "SubHeader.TLabel",
-        font=("Segoe UI", 11, "bold"),
-        background="#F5F5F5",
-        foreground="#333333"
-    )
-
-    style.configure(
-        "TLabel",
-        font=("Segoe UI", 10),
-        background="#F5F5F5",
-        foreground="#333333"
-    )
+    style.configure("TLabel", font=("Calibri", 11),
+                    background="#F5F5F5", foreground="#333333")
 
     style.configure("Card.TFrame", background="#F5F5F5")
 

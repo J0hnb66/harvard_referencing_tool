@@ -1,17 +1,30 @@
 from .base_formatter import BaseFormatter
-from utils.helpers import format_author, safe_year, italic
-
 
 class JournalFormatter(BaseFormatter):
-    """Formatter for journal article references."""
+    """Formatter for journal article references using Harvard rules."""
 
     def format(self, data: dict) -> str:
-        author = format_author(data.get("author"))
-        year = safe_year(data.get("year"))
-        title = f"‘{data.get('title', '')}’"
-        journal = italic(data.get("journal", ""))
+        authors = self.format_authors(data.get("authors", []))
+        year = data.get("year") or "n.d."
+        title = self.quote(data.get("title", ""))
+        journal = self.italic(data.get("journal", ""))
         volume = data.get("volume", "")
         issue = data.get("issue", "")
         pages = data.get("pages", "")
 
-        return f"{author} ({year}) {title}, {journal}, {volume}({issue}), {pages}."
+        if volume and issue:
+            vol_issue = f"{volume}({issue})"
+        elif volume:
+            vol_issue = f"{volume}"
+        else:
+            vol_issue = ""
+
+        parts = [
+            f"{authors} ({year}) {title},",
+            f"{journal},",
+            f"{vol_issue}," if vol_issue else "",
+            f"pp. {pages}."
+        ]
+
+        reference = " ".join([p for p in parts if p]).strip()
+        return self.clean(reference)

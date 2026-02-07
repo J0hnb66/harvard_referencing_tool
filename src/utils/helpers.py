@@ -25,4 +25,5 @@ def safe_year(year: str) -> str:
 
 
 def italic(text: str) -> str:
-    return f"*{text}*"
+    return text
+

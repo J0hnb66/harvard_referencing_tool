@@ -1,18 +1,27 @@
 from .base_formatter import BaseFormatter
-from utils.helpers import format_author, safe_year, italic
 from datetime import datetime
 
-
 class WebsiteFormatter(BaseFormatter):
-    """Formatter for website references."""
+    """Formatter for website references using Harvard rules."""
 
     def format(self, data: dict) -> str:
-        author = format_author(data.get("author"))
-        year = safe_year(data.get("year"))
-        title = italic(data.get("title", ""))
+        authors = self.format_authors(data.get("authors", []))
+        organisation = data.get("organisation") or data.get("website_name", "")
+        author_or_org = authors if authors else organisation
+
+        year = data.get("year") or "n.d."
+        page_title = data.get("title", "")
+        website_name = data.get("website_name", "")
         url = data.get("url", "")
 
-        accessed = datetime.now().strftime("%d %B %Y")
+        access_date = data.get("accessed") or datetime.now().strftime("%d %B %Y")
 
-        return f"{author} ({year}) {title}. Available at: {url} (Accessed: {accessed})."
+        parts = [
+            f"{author_or_org} ({year}) {page_title}.",
+            f"{website_name}.",
+            f"Available at: {url}",
+            f"(Accessed: {access_date})."
+        ]
 
+        reference = " ".join([p for p in parts if p]).strip()
+        return self.clean(reference)

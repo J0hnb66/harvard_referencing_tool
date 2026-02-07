@@ -1,15 +1,21 @@
 from .base_formatter import BaseFormatter
-from utils.helpers import format_author, safe_year, italic
-
 
 class BookFormatter(BaseFormatter):
     """Formatter for book references using Harvard rules."""
 
     def format(self, data: dict) -> str:
-        author = format_author(data.get("author"))
-        year = safe_year(data.get("year"))
-        title = italic(data.get("title", ""))
+        authors = self.format_authors(data.get("authors", []))
+        year = data.get("year") or "n.d."
+        title = self.italic(data.get("title", ""))
+        edition = self.format_edition(data.get("edition"))
+        place = data.get("place", "")
         publisher = data.get("publisher", "")
 
-        return f"{author} ({year}) {title}. {publisher}."
+        parts = [
+            f"{authors} ({year}) {title}.",
+            f"{edition}" if edition else "",
+            f"{place}: {publisher}."
+        ]
 
+        reference = " ".join([p for p in parts if p]).strip()
+        return self.clean(reference)
